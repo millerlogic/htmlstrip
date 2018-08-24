@@ -5,7 +5,61 @@ import (
 	"testing"
 )
 
-func TestHTML(t *testing.T) {
+func TestHTMLTitle(t *testing.T) {
+	for _, ht := range htmlTests {
+		sb := &strings.Builder{}
+		w := &Writer{W: sb}
+		if w.GetTitle() != "" {
+			panic("Unexpected title")
+		}
+		if _, err := w.Write([]byte(ht.html)); err != nil {
+			panic(err)
+		}
+		hasTitle := strings.Contains(ht.html, "<title>")
+		if hasTitle && w.GetTitle() == "" {
+			panic("Title expected")
+		} else if !hasTitle && w.GetTitle() != "" {
+			panic("Unexpected title")
+		}
+	}
+
+	{
+		// Check for specific title.
+		sb := &strings.Builder{}
+		w := &Writer{W: sb}
+		if w.GetTitle() != "" {
+			panic("Unexpected title")
+		}
+		if _, err := w.Write([]byte(`<head><title> foo  bar </title></head> baz`)); err != nil {
+			panic(err)
+		}
+		if w.GetTitle() != "foo bar" {
+			panic("Title expected")
+		}
+	}
+
+	{
+		// Check for over-long title.
+		sb := &strings.Builder{}
+		w := &Writer{W: sb}
+		if w.GetTitle() != "" {
+			panic("Unexpected title")
+		}
+		fulltitle := strings.Repeat("Foo", 350) + strings.Repeat("Bar", 350)
+		if _, err := w.Write([]byte(`<head><title>` + fulltitle + `</title></head> baz`)); err != nil {
+			panic(err)
+		}
+		croptitle := fulltitle[:2048-3] + "…"
+		if w.GetTitle() != croptitle {
+			t.Logf("full title = `%s`", fulltitle)
+			t.Logf("crop title = `%s`", croptitle)
+			t.Logf(" got title = `%s`", w.GetTitle())
+			panic("Over-long title is incorrect")
+		}
+	}
+}
+
+func TestHTMLParts(t *testing.T) {
 	// isplit is a split point to break up the input html to be parsed in two parts.
 	for isplit := 0; isplit < 311; isplit++ {
 		for i, ht := range htmlTests {

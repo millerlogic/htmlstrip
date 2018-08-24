@@ -22,9 +22,11 @@ type Writer struct {
 	inScriptTag,
 	inStyleTag,
 	inHeadTag bool // Keep track to skip script, style and head tags.
-	plainbuf  []byte
-	lastWrote byte
-	err       error
+	plainbuf   []byte
+	lastWrote  byte
+	inTitleTag bool
+	titlebuf   []byte
+	err        error
 }
 
 var _ io.Writer = &Writer{}
@@ -35,6 +37,15 @@ func isspace(b byte) bool {
 
 const maxTagNameLen = 256
 const maxEntityLen = 32
+const maxTitleLen = 2048
+
+// GetTitle returns the last title found, or empty if not found yet.
+func (p *Writer) GetTitle() string {
+	if p.inTitleTag {
+		return ""
+	}
+	return strings.TrimSpace(string(p.titlebuf))
+}
 
 func (p *Writer) Write(data []byte) (int, error) {
 	if p.err != nil {
@@ -45,8 +56,18 @@ func (p *Writer) Write(data []byte) (int, error) {
 		if len(elems) > 0 {
 			if !p.inScriptTag && !p.inStyleTag && !p.inHeadTag {
 				plainbuf = append(plainbuf, elems...)
-				p.lastWrote = elems[len(elems)-1]
+			} else if p.inTitleTag {
+				if len(p.titlebuf) < maxTitleLen {
+					p.titlebuf = append(p.titlebuf, elems...)
+				}
+				if len(p.titlebuf) > maxTitleLen {
+					// TODO: don't clip in middle of UTF-8 sequence!
+					//p.titlebuf = p.titlebuf[:maxTitleLen]
+					p.titlebuf = p.titlebuf[:maxTitleLen-3]
+					p.titlebuf = append(p.titlebuf, 0xE2, 0x80, 0xA6) // UTF-8 ellipsis.
+				}
 			}
+			p.lastWrote = elems[len(elems)-1]
 		}
 	}
 	gotTag := func(tagName []byte, isOpen bool, isClose bool) {
@@ -58,6 +79,17 @@ func (p *Writer) Write(data []byte) (int, error) {
 			p.inScriptTag = isOpen && !isClose
 		case "head":
 			p.inHeadTag = isOpen && !isClose
+		case "title":
+			if p.inHeadTag {
+				if isClose {
+					p.inTitleTag = false
+				}
+				if isOpen && !isClose {
+					p.titlebuf = nil
+					p.inTitleTag = true
+				}
+				p.lastWrote = 0
+			}
 		case "br":
 			if isOpen {
 				appendPlain('\n')
